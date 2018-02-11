@@ -10,9 +10,11 @@
 // 2. Dichromatic Reflectance Model
 // 3. Least Square estimation (Gauss-Seidel iterations)
 //
+// Result:
+// The number of superpixels is 2537 
 
 #include <iostream>
-#include <ctime>
+#include <fstream>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/opencv.hpp>
@@ -21,8 +23,6 @@
 
 int main(int argc, char** argv)
 {
-	int a = 1;
-
 	cv::Mat image = cv::imread("demo.jpg", 1);
 	cv::Mat mask;
 	cv::Mat labels;
@@ -37,6 +37,7 @@ int main(int argc, char** argv)
 	slic->getLabels(labels);
 
 	// get label of every pixel
+	std::vector<int> labels_index;
 	int nr = labels.rows;
 	int nc = labels.cols * labels.channels();
 
@@ -45,9 +46,20 @@ int main(int argc, char** argv)
 		int* data = labels.ptr<int>(i);
 		for (int j = 0; j < nc; j++)
 		{
-			std::cout << data[j] << std::endl;
+			//std::cout << data[j] << std::endl;
+			labels_index.push_back(data[j]);
 		}
 	}
+
+	// output labels_index
+	std::ofstream out;
+	out.open("labels.txt");
+
+	for (int i = 0; i < labels_index.size(); i++)
+	{
+		out << labels_index[i] << std::endl;
+	}
+	out.close();
 
 
 
