@@ -18,6 +18,7 @@
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/opencv.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/ximgproc/slic.hpp>
 
 #include <Eigen/Dense>
@@ -47,20 +48,27 @@ struct Index
 };
 
 
+
+
 int main(int argc, char** argv)
 {
-	cv::Mat image = cv::imread("demo.jpg", 1);
-	cv::resize(image, image, cv::Size(), 0.5, 0.5);
+	cv::Mat image = cv::imread("demo.jpg");
+	//cv::resize(image, image, cv::Size(), 0.5, 0.5);
 
 	int width = image.cols;
 	int height = image.rows;
+
+	if (image.type() == CV_8UC3)
+	{
+		std::cout << "The image type is: " << "CV_8UC3" << std::endl;
+	}
 
 
 	cv::Mat mask;
 	cv::Mat labels;
 
 	// create a static class object 
-	cv::Ptr<cv::ximgproc::SuperpixelSLIC> slic = cv::ximgproc::createSuperpixelSLIC(image, cv::ximgproc::SLIC, 60, 60.0f);
+	cv::Ptr<cv::ximgproc::SuperpixelSLIC> slic = cv::ximgproc::createSuperpixelSLIC(image, cv::ximgproc::SLIC, 80, 60.0f);
 
 	slic->iterate(10);
 	slic->enforceLabelConnectivity();
@@ -70,7 +78,7 @@ int main(int argc, char** argv)
 
 
 	// get label of every pixel
-	std::vector<std::vector<int> > pixel_arrays;
+	std::vector<cv::Vec3b> pixel_arrays;
 	std::vector<superpixel> superpixels;
 	std::vector<Index> indeces;
 	std::vector<int> labels_index;
@@ -91,15 +99,18 @@ int main(int argc, char** argv)
 			//std::cout << data[j] << std::endl;
 			labels_index.push_back(data[j]);
 
-			int r = image.at<cv::Vec3b>(i, j)[0];
-			int g = image.at<cv::Vec3b>(i, j)[1];
-			int b = image.at<cv::Vec3b>(i, j)[2];
+			cv::Vec3b vb = image.at<cv::Vec3b>(i, j);
+
+			//int r = image.at<cv::Vec3b>(i, j)[0];
+			//int g = image.at<cv::Vec3b>(i, j)[1];
+			//int b = image.at<cv::Vec3b>(i, j)[2];
 			//std::cout << "The R G B are: " << r << " " << r << " " << b << std::endl;
-			std::vector<int> one_pixel;
-			one_pixel.push_back(r);
-			one_pixel.push_back(g);
-			one_pixel.push_back(b);
-			pixel_arrays.push_back(one_pixel);
+			//std::vector<int> one_pixel;
+			//one_pixel.push_back(r);
+			//one_pixel.push_back(g);
+			//one_pixel.push_back(b);
+			//pixel_arrays.push_back(one_pixel);
+			pixel_arrays.push_back(vb);
 
 
 			//sp.label_number = data[j];
@@ -131,6 +142,7 @@ int main(int argc, char** argv)
 	std::cout << "The number of superpixels is: " << number << std::endl;
 
 	image.setTo(cv::Scalar(255, 255, 255), mask);
+	cv::imwrite("maks.jpg", mask);
 
 	cv::namedWindow("SLIC", cv::WINDOW_NORMAL);
 	cv::imshow("SLIC", image);
@@ -173,10 +185,10 @@ int main(int argc, char** argv)
 
 		for (int j = 0; j < superpixels[i].index.size(); j++)
 		{
-			r += pixel_arrays[superpixels[i].index[j]][0];
-			g += pixel_arrays[superpixels[i].index[j]][1];
-			b += pixel_arrays[superpixels[i].index[j]][2];
-
+			r += (int)pixel_arrays[superpixels[i].index[j]][0];
+			g += (int)pixel_arrays[superpixels[i].index[j]][1];
+			b += (int)pixel_arrays[superpixels[i].index[j]][2];
+	    
 		}
 
 		superpixels[i].rgb[0] = r / superpixels[i].index.size();
@@ -186,13 +198,40 @@ int main(int argc, char** argv)
 	}
 
 
+	// write image
+	cv::Mat super_image(width, height, CV_8UC3);
+	for (int i = 0; i < super_image.rows; i++)
+	{
+
+		for (int j = 0; j < super_image.cols; j++)
+		{
+			cv::Vec3b pixel;
+
+			//int label = superpixels[labels_index[i + j]].index[0];
+
+			//pixel = pixel_arrays[i*width+j];
+
+
+
+			pixel[0] = superpixels[labels_index[i*width + j]].rgb[0];
+			pixel[1] = superpixels[labels_index[i*width + j]].rgb[1];
+			pixel[2] = superpixels[labels_index[i*width + j]].rgb[2];
+			//std::cout << pixel[0] << " " << pixel[1] << " " << pixel[2] << " " << std::endl;
+
+
+
+			super_image.at<cv::Vec3b>(i, j) = pixel;
+
+		}
+	}
+	cv::imwrite("super_image.jpg", super_image);
 
 
 	// Iteration to solve equation 
 
 
 	// Observations 
-	Eigen::Matrix<double, Eigen::Dynamic, 3> Cl(256*256, 3);
+	Eigen::Matrix<double, Eigen::Dynamic, 3> Cl(512* 512, 3);
 
 
 	for (int i = 0; i < pixel_arrays.size(); i++)
@@ -205,25 +244,25 @@ int main(int argc, char** argv)
 
 
 	// Unknowns
-	Eigen::Matrix<double, Eigen::Dynamic, 3> Cd(256*256, 3);
+	Eigen::Matrix<double, Eigen::Dynamic, 3> Cd(512 * 512, 3);
 	//Eigen::Matrix<double, Eigen::Dynamic, 1> Md(256*256, 1);
 	std::vector<double> Md;
-	Md.resize(256 * 256);
+	Md.resize(512 * 512);
 	Eigen::Matrix<double, 1, 3> Cs;
 	//Eigen::Matrix<double, Eigen::Dynamic, 1> Ms(256 * 256, 1);
 	std::vector<double> Ms;
-	Ms.resize(256 * 256);
+	Ms.resize(512 * 512);
 
 
 	// Intial Values
-	Eigen::Matrix<double, Eigen::Dynamic, 3> Cd0(256*256, 3);
+	Eigen::Matrix<double, Eigen::Dynamic, 3> Cd0(512 * 512, 3);
 	//Eigen::Matrix<double, Eigen::Dynamic, 1> Md0(256*256, 1);
 	std::vector<double> Md0;
-	Md0.resize(256 * 256);
+	Md0.resize(512 * 512);
 	Eigen::Matrix<double, 1, 3> Cs0;
 	//Eigen::Matrix<double, Eigen::Dynamic, 1> Ms0(256*256, 1);
 	std::vector<double> Ms0;
-	Ms0.resize(256 * 256);
+	Ms0.resize(512 * 512);
 
 
 
@@ -238,18 +277,18 @@ int main(int argc, char** argv)
 	}
 
 
-	for (int i = 0; i < 256*256; i++)
+	for (int i = 0; i < width * height; i++)
 	{
-		Md0[i] = 0.1;
-		Ms0[i] = 0.1;
+		Md0[i] = 0.5;
+		Ms0[i] = 0.5;
 	}
 
-	Cs0 << 50, 50, 50;
+	Cs0 << 100, 100, 100;
 
 
 
 
-	int iteration = 50;
+	int iteration = 20;
 	for (int i = 0; i < iteration; i++)
 	{
 
@@ -335,6 +374,29 @@ int main(int argc, char** argv)
 			<< Md[i] << "\n"
 			<< Ms[i] << std::endl;
 	}
+
+
+
+	// write image
+	cv::Mat super_image_1(width, height, CV_8UC3);
+	for (int i = 0; i < super_image_1.rows; i++)
+	{
+
+		for (int j = 0; j < super_image.cols; j++)
+		{
+			cv::Vec3b pixel;
+			pixel[0] = superpixels[labels_index[i*width + j]].rgb[0];
+			pixel[1] = superpixels[labels_index[i*width + j]].rgb[1];
+			pixel[2] = superpixels[labels_index[i*width + j]].rgb[2];
+			//std::cout << pixel[0] << " " << pixel[1] << " " << pixel[2] << " " << std::endl;
+
+
+
+			super_image_1.at<cv::Vec3b>(i, j) = pixel;
+
+		}
+	}
+	cv::imwrite("super_image_1.jpg", super_image_1);
 
 
 
